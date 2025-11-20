@@ -7,8 +7,34 @@ import uuid
 import cv2
 import numpy as np
 import platform
+import subprocess
 
 router = APIRouter()
+
+def find_chinese_fonts_linux():
+    """
+    在Linux系统上使用fc-list查找支持中文的字体
+    """
+    chinese_fonts = []
+    try:
+        # 使用fc-list查找支持中文的字体
+        result = subprocess.run(
+            ['fc-list', ':lang=zh', 'file'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            for line in result.stdout.strip().split('\n'):
+                if line.strip():
+                    # fc-list输出格式: /path/to/font.ttf: FontName:style=...
+                    font_path = line.split(':')[0].strip()
+                    if os.path.exists(font_path):
+                        chinese_fonts.append(font_path)
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        pass
+    
+    return chinese_fonts
 
 def get_unicode_font(font_size: int):
     """
@@ -38,14 +64,27 @@ def get_unicode_font(font_size: int):
     ]
     
     # Linux 字体路径（支持中文、俄文、英文）
-    linux_fonts = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # 支持俄文、英文
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    linux_fonts_static = [
+        # Noto字体（Google开发，广泛支持中文）
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.otf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttf",
+        # 文泉驿字体
         "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",  # 支持中文
         "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",    # 支持中文
+        "/usr/share/fonts/truetype/wqy/wqy-microhei/wqy-microhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei/wqy-zenhei.ttc",
+        # 文鼎字体
         "/usr/share/fonts/truetype/arphic/uming.ttc",      # 支持中文
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",  # 支持俄文、英文
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",  # 支持中文
+        "/usr/share/fonts/truetype/arphic/ukai.ttc",
+        # DejaVu字体（支持俄文、英文）
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        # Liberation字体（支持俄文、英文）
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     ]
     
     font_paths = []
@@ -54,21 +93,33 @@ def get_unicode_font(font_size: int):
     elif system == "Windows":
         font_paths = windows_fonts
     else:  # Linux
-        font_paths = linux_fonts
+        # 优先使用动态查找的中文字体
+        chinese_fonts_dynamic = find_chinese_fonts_linux()
+        if chinese_fonts_dynamic:
+            font_paths = chinese_fonts_dynamic + linux_fonts_static
+        else:
+            font_paths = linux_fonts_static
     
     # 尝试加载字体
     for font_path in font_paths:
         if os.path.exists(font_path):
             try:
-                # 如果是 .ttc 文件，需要指定索引
+                # 如果是 .ttc 文件（TrueType Collection），需要指定索引
                 if font_path.endswith('.ttc'):
                     return ImageFont.truetype(font_path, font_size, index=0)
-                else:
+                # .ttf 和 .otf 文件可以直接加载
+                elif font_path.endswith(('.ttf', '.otf')):
                     return ImageFont.truetype(font_path, font_size)
-            except:
+                else:
+                    # 其他格式也尝试加载
+                    return ImageFont.truetype(font_path, font_size)
+            except Exception as e:
+                # 记录失败但不中断，继续尝试下一个字体
+                print(f"Failed to load font {font_path}: {str(e)}")
                 continue
     
-    # 如果都失败，返回默认字体
+    # 如果都失败，返回默认字体（不支持中文）
+    print("Warning: No suitable font found, using default font (may not support Chinese)")
     return ImageFont.load_default()
 
 def wrap_text(text: str, font, max_width: int):
