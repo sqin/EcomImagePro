@@ -1,0 +1,12 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pillow==10.1.0
+dashscope==1.17.0
+python-dotenv==1.0.0
+alibabacloud_ocr_api20210707>=2.0.0
+alibabacloud_credentials>=0.3.0
+alibabacloud_tea_openapi>=0.3.0
+alibabacloud_tea_util>=0.3.0
+alibabacloud_ocr_api20210707
+
