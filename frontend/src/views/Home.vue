@@ -93,39 +93,41 @@
                     readonly
                     style="margin-top: 10px;"
                   ></el-input>
+
+                  <!-- 文字样式设置（仅在翻译成功后显示） -->
+                  <div v-if="translationResult" class="text-options" style="margin-top: 20px;">
+                    <el-divider></el-divider>
+                    <el-input
+                      v-model="textContent"
+                      placeholder="输入文字内容"
+                      style="margin-top: 10px;"
+                    ></el-input>
+                    <el-input-number
+                      v-model="textSize"
+                      :min="12"
+                      :max="100"
+                      label="字体大小"
+                      style="width: 100%; margin-top: 10px;"
+                    ></el-input-number>
+                    <el-select v-model="textFont" placeholder="选择字体" style="width: 100%; margin-top: 10px;">
+                      <el-option label="Arial" value="arial.ttf"></el-option>
+                      <el-option label="Times New Roman" value="times.ttf"></el-option>
+                      <el-option label="Courier New" value="courier.ttf"></el-option>
+                    </el-select>
+                    <el-color-picker v-model="textColor" style="margin-top: 10px;"></el-color-picker>
+                    <el-button
+                      type="primary"
+                      @click="handleAddText"
+                      :disabled="!textContent"
+                      style="width: 100%; margin-top: 10px;"
+                    >
+                      添加翻译文字
+                    </el-button>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <!-- 文字样式设置 -->
-            <div v-if="operationType === 'text'" class="text-options">
-              <el-input 
-                v-model="textContent" 
-                placeholder="输入文字" 
-                style="margin-top: 10px;"
-              ></el-input>
-              <el-input-number 
-                v-model="textSize" 
-                :min="12" 
-                :max="100" 
-                label="字体大小"
-                style="width: 100%; margin-top: 10px;"
-              ></el-input-number>
-              <el-select v-model="textFont" placeholder="选择字体" style="width: 100%; margin-top: 10px;">
-                <el-option label="Arial" value="arial.ttf"></el-option>
-                <el-option label="Times New Roman" value="times.ttf"></el-option>
-                <el-option label="Courier New" value="courier.ttf"></el-option>
-              </el-select>
-              <el-color-picker v-model="textColor" style="margin-top: 10px;"></el-color-picker>
-              <el-button 
-                type="primary" 
-                @click="handleAddText" 
-                :disabled="!textContent"
-                style="width: 100%; margin-top: 10px;"
-              >
-                添加文字
-              </el-button>
-            </div>
 
           </div>
 
@@ -285,8 +287,6 @@ const handleRecognize = async () => {
       ocrText.value = response.text
       translationResult.value = ''
       ElMessage.success('识别完成!')
-      // 自动使用识别结果进行翻译
-      await handleTranslate(true)
     } else {
       ocrText.value = ''
       translationResult.value = ''
@@ -369,21 +369,34 @@ const handleAddText = async () => {
     return
   }
 
-  // 获取当前图片的中心位置作为默认位置
-  const defaultX = 100
-  const defaultY = 100
+  // 准备添加文字的参数
+  const params = {
+    image_id: currentImage.value.id,
+    text: textContent.value,
+    font_size: textSize.value,
+    font_family: textFont.value,
+    color: textColor.value
+  }
+
+  // 如果有选中的区域，传递区域坐标用于清除原有文字
+  if (selectedRegion.value) {
+    params.region = {
+      x: selectedRegion.value.x,
+      y: selectedRegion.value.y,
+      width: selectedRegion.value.width,
+      height: selectedRegion.value.height
+    }
+    params.x = selectedRegion.value.x
+    params.y = selectedRegion.value.y
+  } else {
+    // 默认位置
+    params.x = 100
+    params.y = 100
+  }
 
   try {
     ElMessage.info('正在添加文字...')
-    const response = await addText({
-      image_id: currentImage.value.id,
-      text: textContent.value,
-      x: defaultX,
-      y: defaultY,
-      font_size: textSize.value,
-      font_family: textFont.value,
-      color: textColor.value
-    })
+    const response = await addText(params)
     
     processedImageUrl.value = response.url
     processedImageId.value = response.processed_id
