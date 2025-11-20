@@ -17,3 +17,9 @@ temp_ocr/
 *.jpeg
 *.gif
 
+# 日志和进程文件
+logs/
+*.log
+app.pid
+nohup.out
+
