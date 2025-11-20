@@ -5,3 +5,8 @@ dist/
 .env.local
 .env.*.local
 
+# 进程和日志文件
+logs/
+app.pid
+nohup.out
+
