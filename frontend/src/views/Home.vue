@@ -1,6 +1,9 @@
 <template>
   <div class="home-container">
     <div class="donate-entry">
+      <el-button type="danger" round @click="handleLogout" style="margin-right: 10px;">
+        登出
+      </el-button>
       <el-button type="primary" round @click="showDonateDialog = true">
         请我喝杯咖啡
       </el-button>
@@ -192,11 +195,14 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
 import ImageEditor from '../components/ImageEditor.vue'
 import { uploadImage, recognizeText, translateText, addText, saveImage } from '../api/image'
+import { logout } from '../api/auth'
 
+const router = useRouter()
 const currentImage = ref(null)
 const operationType = ref('select')
 const selectedRegion = ref(null)
@@ -432,6 +438,37 @@ const handleSave = async () => {
     ElMessage.success('图片保存成功!')
   } catch (error) {
     ElMessage.error('保存失败: ' + (error.message || '未知错误'))
+  }
+}
+
+const handleLogout = async () => {
+  try {
+    await ElMessageBox.confirm('确定要登出吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    const token = localStorage.getItem('auth_token')
+    if (token) {
+      try {
+        await logout(token)
+      } catch (error) {
+        // 即使登出API失败，也清除本地token
+        console.error('登出API调用失败:', error)
+      }
+    }
+    
+    // 清除本地token
+    localStorage.removeItem('auth_token')
+    ElMessage.success('已登出')
+    // 跳转到登录页
+    router.push('/login')
+  } catch (error) {
+    // 用户取消登出
+    if (error !== 'cancel') {
+      console.error('登出失败:', error)
+    }
   }
 }
 </script>

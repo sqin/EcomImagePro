@@ -5,6 +5,10 @@
 在 `backend` 目录下创建 `.env` 文件，内容如下：
 
 ```
+# 登录认证配置
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin123
+
 # 阿里云OCR服务配置
 ALIYUN_ACCESS_KEY_ID=your_access_key_id
 ALIYUN_ACCESS_KEY_SECRET=your_access_key_secret
@@ -12,6 +16,13 @@ ALIYUN_ACCESS_KEY_SECRET=your_access_key_secret
 # 通义千问API密钥（用于翻译）
 DASHSCOPE_API_KEY=your_api_key_here
 ```
+
+## 登录认证配置
+
+- `ADMIN_USERNAME`: 登录用户名（默认: admin）
+- `ADMIN_PASSWORD`: 登录密码（默认: admin123）
+
+**重要提示**：生产环境请务必修改默认的用户名和密码！
 
 ## 获取阿里云AccessKey
 
