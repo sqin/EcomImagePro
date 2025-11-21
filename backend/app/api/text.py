@@ -166,10 +166,13 @@ class TextRequest(BaseModel):
     text: str
     x: int
     y: int
+    width: Optional[int] = None  # 矩形宽度，用于文字填充
+    height: Optional[int] = None  # 矩形高度，用于文字填充
     font_size: int = 24
     font_family: str = "arial.ttf"
     color: str = "#000000"
-    region: Optional[Region] = None
+    align: str = "left"  # 对齐方式：left, center, right
+    region: Optional[Region] = None  # 用于清除区域内的文字（inpainting）
 
 @router.post("/add-text")
 async def add_text(request: TextRequest):
@@ -246,37 +249,111 @@ async def add_text(request: TextRequest):
         # 转换颜色
         color = tuple(int(request.color[i:i+2], 16) for i in (1, 3, 5))
         
-        # 确定文本区域宽度（如果有region，使用region宽度；否则使用图片宽度减去x坐标）
-        if request.region:
-            max_width = request.region.width
+        # 如果提供了宽度和高度，在矩形区域内填充文字
+        if request.width and request.height and request.width > 0 and request.height > 0:
+            # 计算文字在矩形内的位置
+            text_x = request.x
+            text_y = request.y
+            
+            # 根据对齐方式调整X坐标
+            if request.align == "center":
+                # 获取文字宽度（近似）
+                bbox = draw.textbbox((0, 0), request.text, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_x = request.x + (request.width - text_width) // 2
+            elif request.align == "right":
+                bbox = draw.textbbox((0, 0), request.text, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_x = request.x + request.width - text_width
+            
+            # 如果文字宽度超过矩形宽度，需要换行
+            bbox = draw.textbbox((0, 0), request.text, font=font)
+            text_width = bbox[2] - bbox[0]
+            
+            if text_width > request.width:
+                # 需要换行处理
+                # 对于中英文混合文本，按字符处理更准确
+                lines = []
+                current_line = ""
+                
+                # 将文本按空格分割成单词（英文）或字符（中文）
+                import re
+                # 使用正则表达式分割，保留空格
+                tokens = re.findall(r'\S+|\s+', request.text)
+                
+                for token in tokens:
+                    if token.isspace():
+                        # 空格，尝试添加到当前行
+                        test_line = current_line + token
+                        test_bbox = draw.textbbox((0, 0), test_line, font=font)
+                        test_width = test_bbox[2] - test_bbox[0]
+                        
+                        if test_width <= request.width:
+                            current_line = test_line
+                        else:
+                            # 空格导致超宽，换行
+                            if current_line:
+                                lines.append(current_line.strip())
+                            current_line = ""
+                    else:
+                        # 单词或字符
+                        test_line = current_line + token
+                        test_bbox = draw.textbbox((0, 0), test_line, font=font)
+                        test_width = test_bbox[2] - test_bbox[0]
+                        
+                        if test_width <= request.width:
+                            current_line = test_line
+                        else:
+                            # 超宽，需要换行
+                            if current_line:
+                                lines.append(current_line.strip())
+                                current_line = token
+                            else:
+                                # 单个token就超过宽度，按字符拆分
+                                for char in token:
+                                    test_char_line = current_line + char
+                                    test_char_bbox = draw.textbbox((0, 0), test_char_line, font=font)
+                                    test_char_width = test_char_bbox[2] - test_char_bbox[0]
+                                    
+                                    if test_char_width <= request.width:
+                                        current_line = test_char_line
+                                    else:
+                                        if current_line:
+                                            lines.append(current_line.strip())
+                                        current_line = char
+                
+                if current_line:
+                    lines.append(current_line.strip())
+                
+                # 获取行高
+                line_bbox = draw.textbbox((0, 0), "Ag", font=font)
+                line_height = line_bbox[3] - line_bbox[1]
+                
+                # 绘制多行文字
+                current_y = text_y
+                for line in lines:
+                    if current_y + line_height > request.y + request.height:
+                        break  # 超出矩形高度，停止绘制
+                    
+                    # 根据对齐方式调整X坐标
+                    line_x = text_x
+                    if request.align == "center":
+                        line_bbox = draw.textbbox((0, 0), line, font=font)
+                        line_width = line_bbox[2] - line_bbox[0]
+                        line_x = request.x + (request.width - line_width) // 2
+                    elif request.align == "right":
+                        line_bbox = draw.textbbox((0, 0), line, font=font)
+                        line_width = line_bbox[2] - line_bbox[0]
+                        line_x = request.x + request.width - line_width
+                    
+                    draw.text((line_x, current_y), line, fill=color, font=font)
+                    current_y += line_height
+            else:
+                # 单行文字，直接绘制
+                draw.text((text_x, text_y), request.text, fill=color, font=font)
         else:
-            max_width = img.width - request.x - 10  # 留10像素边距
-        
-        # 文本换行处理
-        text_lines = wrap_text(request.text, font, max_width)
-        
-        # 计算行高（根据文本类型选择合适的测试字符）
-        # 检测文本类型：中文、俄文或其他
-        has_chinese = any('\u4e00' <= c <= '\u9fff' for c in request.text)
-        has_russian = any('\u0400' <= c <= '\u04FF' for c in request.text)
-        
-        if has_chinese:
-            test_char = "中"  # 中文字符
-        elif has_russian:
-            test_char = "А"  # 俄文字符（西里尔字母A）
-        else:
-            test_char = "A"  # 英文字符
-        
-        bbox = font.getbbox(test_char)
-        line_height = bbox[3] - bbox[1] + 5  # 行高加5像素间距
-        
-        # 绘制多行文字
-        y_offset = request.y
-        for line in text_lines:
-            if line:  # 只绘制非空行
-                draw.text((request.x, y_offset), line, fill=color, font=font)
-            # 无论是否为空行，都增加行高（保持空行间距）
-            y_offset += line_height
+            # 没有提供矩形尺寸，使用原来的方式
+            draw.text((request.x, request.y), request.text, fill=color, font=font)
         
         # 保存处理后的图片
         processed_id = str(uuid.uuid4())

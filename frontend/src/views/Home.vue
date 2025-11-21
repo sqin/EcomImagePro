@@ -96,41 +96,74 @@
                     readonly
                     style="margin-top: 10px;"
                   ></el-input>
-
-                  <!-- 文字样式设置（仅在翻译成功后显示） -->
-                  <div v-if="translationResult" class="text-options" style="margin-top: 20px;">
-                    <el-divider></el-divider>
-                    <el-input
-                      v-model="textContent"
-                      placeholder="输入文字内容"
-                      style="margin-top: 10px;"
-                    ></el-input>
-                    <el-input-number
-                      v-model="textSize"
-                      :min="12"
-                      :max="100"
-                      label="字体大小"
-                      style="width: 100%; margin-top: 10px;"
-                    ></el-input-number>
-                    <el-select v-model="textFont" placeholder="选择字体" style="width: 100%; margin-top: 10px;">
-                      <el-option label="Arial" value="arial.ttf"></el-option>
-                      <el-option label="Times New Roman" value="times.ttf"></el-option>
-                      <el-option label="Courier New" value="courier.ttf"></el-option>
-                    </el-select>
-                    <el-color-picker v-model="textColor" style="margin-top: 10px;"></el-color-picker>
-                    <el-button
-                      type="primary"
-                      @click="handleAddText"
-                      :disabled="!textContent"
-                      style="width: 100%; margin-top: 10px;"
-                    >
-                      添加翻译文字
-                    </el-button>
-                  </div>
                 </div>
               </div>
             </div>
 
+            <!-- 文字样式设置（独立添加文字模式） -->
+            <div v-if="operationType === 'text'" class="text-options">
+              <el-divider></el-divider>
+              <div style="margin-top: 10px; margin-bottom: 10px; color: #909399; font-size: 12px;">
+                <el-icon><InfoFilled /></el-icon>
+                提示：先选择要清除的区域，再选择文字填充区域
+              </div>
+              <div v-if="textClearRegion" style="margin-bottom: 10px; padding: 8px; background-color: #fff3cd; border-radius: 4px; font-size: 12px; color: #856404;">
+                <el-icon><Check /></el-icon>
+                已选择清除区域：X={{ textClearRegion.x }}, Y={{ textClearRegion.y }}, 宽={{ textClearRegion.width }}, 高={{ textClearRegion.height }}
+              </div>
+              <div v-if="textPositionRegion" style="margin-bottom: 10px; padding: 8px; background-color: #f0f9ff; border-radius: 4px; font-size: 12px; color: #409EFF;">
+                <el-icon><Check /></el-icon>
+                已选择填充区域：X={{ textPositionRegion.x }}, Y={{ textPositionRegion.y }}, 宽={{ textPositionRegion.width }}, 高={{ textPositionRegion.height }}
+              </div>
+              <div v-if="!textClearRegion" style="margin-bottom: 10px; padding: 8px; background-color: #fff3cd; border-radius: 4px; font-size: 12px; color: #856404;">
+                <el-icon><InfoFilled /></el-icon>
+                步骤1：请先选择要清除原有文字的区域
+              </div>
+              <div v-else-if="!textPositionRegion" style="margin-bottom: 10px; padding: 8px; background-color: #d1ecf1; border-radius: 4px; font-size: 12px; color: #0c5460;">
+                <el-icon><InfoFilled /></el-icon>
+                步骤2：请选择文字填充的区域
+              </div>
+              <el-button 
+                v-if="textClearRegion || textPositionRegion"
+                type="warning" 
+                size="small"
+                @click="handleResetTextRegions"
+                style="width: 100%; margin-top: 10px; margin-bottom: 10px;"
+              >
+                重新选择区域
+              </el-button>
+              <el-input 
+                v-model="textContent" 
+                placeholder="输入文字" 
+                style="margin-top: 10px;"
+              ></el-input>
+              <el-input-number 
+                v-model="textSize" 
+                :min="12" 
+                :max="100" 
+                label="字体大小"
+                style="width: 100%; margin-top: 10px;"
+              ></el-input-number>
+              <el-select v-model="textFont" placeholder="选择字体" style="width: 100%; margin-top: 10px;">
+                <el-option label="Arial" value="arial.ttf"></el-option>
+                <el-option label="Times New Roman" value="times.ttf"></el-option>
+                <el-option label="Courier New" value="courier.ttf"></el-option>
+              </el-select>
+              <el-select v-model="textAlign" placeholder="对齐方式" style="width: 100%; margin-top: 10px;">
+                <el-option label="左对齐" value="left"></el-option>
+                <el-option label="居中" value="center"></el-option>
+                <el-option label="右对齐" value="right"></el-option>
+              </el-select>
+              <el-color-picker v-model="textColor" style="margin-top: 10px;"></el-color-picker>
+              <el-button 
+                type="primary" 
+                @click="handleAddText" 
+                :disabled="!textContent"
+                style="width: 100%; margin-top: 10px;"
+              >
+                添加文字
+              </el-button>
+            </div>
 
           </div>
 
@@ -197,7 +230,7 @@
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload } from '@element-plus/icons-vue'
+import { Upload, InfoFilled, Check } from '@element-plus/icons-vue'
 import ImageEditor from '../components/ImageEditor.vue'
 import { uploadImage, recognizeText, translateText, addText, saveImage } from '../api/image'
 import { logout } from '../api/auth'
@@ -206,6 +239,8 @@ const router = useRouter()
 const currentImage = ref(null)
 const operationType = ref('select')
 const selectedRegion = ref(null)
+const textPositionRegion = ref(null) // 文字添加时的位置区域（填充区域）
+const textClearRegion = ref(null) // 文字添加时需要清除的区域
 const processedImageUrl = ref(null)
 const processedImageId = ref(null)
 
@@ -226,6 +261,7 @@ const textContent = ref('')
 const textSize = ref(24)
 const textFont = ref('arial.ttf')
 const textColor = ref('#000000')
+const textAlign = ref('left')
 
 // 上传配置
 const uploadAction = '/api/upload'
@@ -248,6 +284,8 @@ const handleUploadSuccess = (response) => {
   }
   processedImageUrl.value = null
   selectedRegion.value = null
+  textPositionRegion.value = null
+  textClearRegion.value = null
   ElMessage.success('图片上传成功!')
 }
 
@@ -256,10 +294,23 @@ const handleUploadError = () => {
 }
 
 const handleOperationChange = () => {
-  if (operationType.value !== 'select') {
+  if (operationType.value === 'select') {
+    // 切换到选择区域模式时，清除文字添加相关的区域
+    textClearRegion.value = null
+    textPositionRegion.value = null
+  } else if (operationType.value === 'text') {
+    // 切换到文字添加模式时，不清除textPositionRegion和textClearRegion（保留用户选择）
+    // 清除OCR相关状态
     showOCR.value = false
     ocrText.value = ''
     translationResult.value = ''
+  } else {
+    // 切换操作类型时，清除所有相关状态
+    showOCR.value = false
+    ocrText.value = ''
+    translationResult.value = ''
+    textClearRegion.value = null
+    textPositionRegion.value = null
   }
 }
 
@@ -307,11 +358,25 @@ const handleRecognize = async () => {
 }
 
 const handleRegionSelected = (region) => {
-  selectedRegion.value = region
-  // 选择新区域时，重置OCR相关状态
-  showOCR.value = false
-  ocrText.value = ''
-  translationResult.value = ''
+  if (operationType.value === 'text') {
+    // 文字添加模式：分两步选择
+    if (!textClearRegion.value) {
+      // 第一步：选择清除区域
+      textClearRegion.value = region
+      ElMessage.success('已选择清除区域，请再次选择文字填充区域')
+    } else {
+      // 第二步：选择填充区域
+      textPositionRegion.value = region
+      ElMessage.success('已选择填充区域，可以添加文字了')
+    }
+  } else {
+    // 其他模式：保存为选择区域
+    selectedRegion.value = region
+    // 选择新区域时，重置OCR相关状态
+    showOCR.value = false
+    ocrText.value = ''
+    translationResult.value = ''
+  }
 }
 
 const handleTranslate = async (auto = false) => {
@@ -344,10 +409,8 @@ const handleTranslate = async (auto = false) => {
     
     if (response.translated_text) {
       translationResult.value = response.translated_text
-      // 将翻译结果同步到文字内容，便于后续排版
-      textContent.value = response.translated_text
       if (!auto) {
-        ElMessage.success('翻译完成! 可切换到“添加文字”进行排版')
+        ElMessage.success('翻译完成!')
       }
     } else {
       translationResult.value = ''
@@ -369,6 +432,12 @@ watch([ocrText, translateSource, translateTarget], () => {
   translationResult.value = ''
 })
 
+const handleResetTextRegions = () => {
+  textClearRegion.value = null
+  textPositionRegion.value = null
+  ElMessage.info('已重置区域选择，请重新选择')
+}
+
 const handleAddText = async () => {
   if (!textContent.value) {
     ElMessage.warning('请输入文字内容!')
@@ -381,23 +450,48 @@ const handleAddText = async () => {
     text: textContent.value,
     font_size: textSize.value,
     font_family: textFont.value,
-    color: textColor.value
+    color: textColor.value,
+    align: textAlign.value
   }
 
-  // 如果有选中的区域，传递区域坐标用于清除原有文字
-  if (selectedRegion.value) {
-    params.region = {
-      x: selectedRegion.value.x,
-      y: selectedRegion.value.y,
-      width: selectedRegion.value.width,
-      height: selectedRegion.value.height
+  // 判断是独立添加（使用textClearRegion和textPositionRegion）
+  if (operationType.value === 'text') {
+    // 独立添加文字模式：使用textClearRegion清除，使用textPositionRegion填充
+    if (textClearRegion.value) {
+      // 设置清除区域
+      params.region = {
+        x: textClearRegion.value.x,
+        y: textClearRegion.value.y,
+        width: textClearRegion.value.width,
+        height: textClearRegion.value.height
+      }
     }
-    params.x = selectedRegion.value.x
-    params.y = selectedRegion.value.y
+    
+    if (textPositionRegion.value) {
+      // 设置填充区域
+      params.x = textPositionRegion.value.x
+      params.y = textPositionRegion.value.y
+      params.width = textPositionRegion.value.width
+      params.height = textPositionRegion.value.height
+    } else {
+      // 如果没有选择填充区域，使用清除区域的位置
+      if (textClearRegion.value) {
+        params.x = textClearRegion.value.x
+        params.y = textClearRegion.value.y
+        params.width = textClearRegion.value.width
+        params.height = textClearRegion.value.height
+      } else {
+        // 默认位置
+        params.x = 100
+        params.y = 100
+        ElMessage.warning('建议先选择区域，将使用默认位置添加')
+      }
+    }
   } else {
     // 默认位置
     params.x = 100
     params.y = 100
+    ElMessage.warning('建议先选择文字位置，将使用默认位置添加')
   }
 
   try {
@@ -409,6 +503,9 @@ const handleAddText = async () => {
     currentImage.value.url = response.url
     currentImage.value.id = response.processed_id
     textContent.value = ''
+    // 清除区域选择，方便下次使用
+    textClearRegion.value = null
+    textPositionRegion.value = null
     ElMessage.success('文字添加成功!')
   } catch (error) {
     ElMessage.error('添加文字失败: ' + (error.response?.data?.detail || error.message))

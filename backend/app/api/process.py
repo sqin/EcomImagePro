@@ -34,14 +34,33 @@ async def recognize_text(request: OCRRequest):
     识别选中区域的文字（OCR）
     """
     try:
-        # 查找原始图片
-        upload_dir = "uploads"
-        image_files = [f for f in os.listdir(upload_dir) if f.startswith(request.image_id)]
+        # 查找图片（先在processed目录查找，再在uploads目录查找）
+        image_path = None
         
-        if not image_files:
-            raise HTTPException(status_code=404, detail="图片不存在")
+        # 先检查processed目录（处理后的图片）
+        processed_dir = "processed"
+        if os.path.exists(processed_dir):
+            # 精确匹配：{image_id}.jpg
+            exact_match = os.path.join(processed_dir, f"{request.image_id}.jpg")
+            if os.path.exists(exact_match):
+                image_path = exact_match
+            else:
+                # 模糊匹配：以image_id开头的文件
+                processed_files = [f for f in os.listdir(processed_dir) if f.startswith(request.image_id)]
+                if processed_files:
+                    image_path = os.path.join(processed_dir, processed_files[0])
         
-        image_path = os.path.join(upload_dir, image_files[0])
+        # 如果processed目录没找到，再检查uploads目录（原始图片）
+        if not image_path:
+            upload_dir = "uploads"
+            if os.path.exists(upload_dir):
+                # 模糊匹配：以image_id开头的文件（原始上传的文件名可能包含更多字符）
+                image_files = [f for f in os.listdir(upload_dir) if f.startswith(request.image_id)]
+                if image_files:
+                    image_path = os.path.join(upload_dir, image_files[0])
+        
+        if not image_path or not os.path.exists(image_path):
+            raise HTTPException(status_code=404, detail=f"图片不存在 (image_id: {request.image_id})")
         
         # 打开图片
         img = Image.open(image_path)
@@ -78,14 +97,33 @@ async def translate_region(request: TranslateRequest):
     翻译选中区域的文字
     """
     try:
-        # 查找原始图片
-        upload_dir = "uploads"
-        image_files = [f for f in os.listdir(upload_dir) if f.startswith(request.image_id)]
+        # 查找图片（先在processed目录查找，再在uploads目录查找）
+        image_path = None
         
-        if not image_files:
-            raise HTTPException(status_code=404, detail="图片不存在")
+        # 先检查processed目录（处理后的图片）
+        processed_dir = "processed"
+        if os.path.exists(processed_dir):
+            # 精确匹配：{image_id}.jpg
+            exact_match = os.path.join(processed_dir, f"{request.image_id}.jpg")
+            if os.path.exists(exact_match):
+                image_path = exact_match
+            else:
+                # 模糊匹配：以image_id开头的文件
+                processed_files = [f for f in os.listdir(processed_dir) if f.startswith(request.image_id)]
+                if processed_files:
+                    image_path = os.path.join(processed_dir, processed_files[0])
         
-        image_path = os.path.join(upload_dir, image_files[0])
+        # 如果processed目录没找到，再检查uploads目录（原始图片）
+        if not image_path:
+            upload_dir = "uploads"
+            if os.path.exists(upload_dir):
+                # 模糊匹配：以image_id开头的文件（原始上传的文件名可能包含更多字符）
+                image_files = [f for f in os.listdir(upload_dir) if f.startswith(request.image_id)]
+                if image_files:
+                    image_path = os.path.join(upload_dir, image_files[0])
+        
+        if not image_path or not os.path.exists(image_path):
+            raise HTTPException(status_code=404, detail=f"图片不存在 (image_id: {request.image_id})")
         
         # 打开图片
         img = Image.open(image_path)
