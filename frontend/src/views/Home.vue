@@ -37,7 +37,7 @@
             <el-divider>操作类型</el-divider>
             
             <el-radio-group v-model="operationType" @change="handleOperationChange">
-              <el-radio label="select">选择区域</el-radio>
+              <el-radio label="select">识别与翻译</el-radio>
               <el-radio label="erase">擦除文字</el-radio>
               <el-radio label="text">添加文字</el-radio>
             </el-radio-group>
