@@ -22,6 +22,10 @@ export const translateText = (data) => {
   return api.post('/process/translate-text', data)
 }
 
+export const eraseText = (data) => {
+  return api.post('/erase', data)
+}
+
 export const addText = (data) => {
   return api.post('/add-text', data)
 }

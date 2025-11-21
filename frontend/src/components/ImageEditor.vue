@@ -152,7 +152,7 @@ const getCanvasCoordinates = (event) => {
 }
 
 const handleMouseDown = (event) => {
-  if (props.operationType !== 'select' && props.operationType !== 'translate' && props.operationType !== 'text') {
+  if (props.operationType !== 'select' && props.operationType !== 'translate' && props.operationType !== 'text' && props.operationType !== 'erase') {
     return
   }
 

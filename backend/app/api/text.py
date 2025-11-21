@@ -11,6 +11,86 @@ import subprocess
 
 router = APIRouter()
 
+class Region(BaseModel):
+    x: int
+    y: int
+    width: int
+    height: int
+
+class EraseRequest(BaseModel):
+    image_id: str
+    region: Region
+
+@router.post("/erase")
+async def erase_text(request: EraseRequest):
+    """
+    擦除选中区域的文字（使用inpainting）
+    """
+    try:
+        # 查找图片（先在processed目录查找，再在uploads目录查找）
+        image_path = None
+        
+        # 先检查processed目录（处理后的图片）
+        processed_dir = "processed"
+        if os.path.exists(processed_dir):
+            # 精确匹配：{image_id}.jpg
+            exact_match = os.path.join(processed_dir, f"{request.image_id}.jpg")
+            if os.path.exists(exact_match):
+                image_path = exact_match
+            else:
+                # 模糊匹配：以image_id开头的文件
+                processed_files = [f for f in os.listdir(processed_dir) if f.startswith(request.image_id)]
+                if processed_files:
+                    image_path = os.path.join(processed_dir, processed_files[0])
+        
+        # 如果processed目录没找到，再检查uploads目录（原始图片）
+        if not image_path:
+            upload_dir = "uploads"
+            if os.path.exists(upload_dir):
+                # 模糊匹配：以image_id开头的文件（原始上传的文件名可能包含更多字符）
+                image_files = [f for f in os.listdir(upload_dir) if f.startswith(request.image_id)]
+                if image_files:
+                    image_path = os.path.join(upload_dir, image_files[0])
+        
+        if not image_path or not os.path.exists(image_path):
+            raise HTTPException(status_code=404, detail=f"图片不存在 (image_id: {request.image_id})")
+        
+        # 打开图片
+        img = Image.open(image_path).convert("RGB")
+        
+        # 将PIL Image转换为numpy array供OpenCV使用
+        img_np = np.array(img)
+        
+        # 创建掩码，标记需要修复的区域（白色区域表示需要修复）
+        mask = np.zeros((img_np.shape[0], img_np.shape[1]), dtype=np.uint8)
+        region = request.region
+        mask[region.y:region.y + region.height, region.x:region.x + region.width] = 255
+        
+        # 使用OpenCV的inpainting功能清除文字
+        # INPAINT_TELEA算法适用于大多数场景
+        inpainted = cv2.inpaint(img_np, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
+        
+        # 将处理后的numpy array转回PIL Image
+        img = Image.fromarray(inpainted)
+        
+        # 保存处理后的图片
+        processed_id = str(uuid.uuid4())
+        output_path = os.path.join("processed", f"{processed_id}.jpg")
+        img.save(output_path, "JPEG", quality=95)
+        
+        return {
+            "processed_id": processed_id,
+            "url": f"/processed/{processed_id}.jpg"
+        }
+    except HTTPException:
+        # 重新抛出HTTP异常
+        raise
+    except Exception as e:
+        import traceback
+        error_detail = f"擦除文字失败: {str(e)}\n{traceback.format_exc()}"
+        print(error_detail)  # 打印详细错误信息到控制台
+        raise HTTPException(status_code=500, detail=f"擦除文字失败: {str(e)}")
+
 def find_chinese_fonts_linux():
     """
     在Linux系统上使用fc-list查找支持中文的字体
@@ -155,12 +235,6 @@ def wrap_text(text: str, font, max_width: int):
     
     return lines
 
-class Region(BaseModel):
-    x: int
-    y: int
-    width: int
-    height: int
-
 class TextRequest(BaseModel):
     image_id: str
     text: str
@@ -210,40 +284,28 @@ async def add_text(request: TextRequest):
         
         # 打开图片
         img = Image.open(image_path).convert("RGB")
-
-        # 如果提供了region参数，先清除区域内的文字
-        if request.region:
-            # 将PIL Image转换为numpy array供OpenCV使用
-            img_np = np.array(img)
-
-            # 创建掩码，标记需要修复的区域（白色区域表示需要修复）
-            mask = np.zeros((img_np.shape[0], img_np.shape[1]), dtype=np.uint8)
-            region = request.region
-            mask[region.y:region.y + region.height, region.x:region.x + region.width] = 255
-
-            # 使用OpenCV的inpainting功能清除文字
-            # INPAINT_TELEA算法适用于大多数场景
-            inpainted = cv2.inpaint(img_np, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
-
-            # 将处理后的numpy array转回PIL Image
-            img = Image.fromarray(inpainted)
-
         draw = ImageDraw.Draw(img)
         
-        # 加载字体（优先使用支持中文的字体）
+        # 检测文本中是否包含中文、俄文等需要特殊字体的字符
+        has_chinese = any('\u4e00' <= c <= '\u9fff' for c in request.text)
+        has_russian = any('\u0400' <= c <= '\u04FF' for c in request.text)
+        needs_unicode_font = has_chinese or has_russian
+        
+        # 加载字体（如果文本包含中文或俄文，优先使用支持多语言的字体）
         try:
-            # 尝试使用指定字体
             font_path = request.font_family
-            if os.path.exists(font_path):
+            # 如果文本包含中文或俄文，或者指定字体不存在，使用支持多语言的字体
+            if needs_unicode_font or not os.path.exists(font_path):
+                font = get_unicode_font(request.font_size)
+            else:
+                # 文本只包含英文等基本字符，可以使用指定字体
                 if font_path.endswith('.ttc'):
                     font = ImageFont.truetype(font_path, request.font_size, index=0)
                 else:
                     font = ImageFont.truetype(font_path, request.font_size)
-            else:
-                # 使用支持多语言（中文、俄文、英文）的系统字体
-                font = get_unicode_font(request.font_size)
         except Exception as e:
             # 如果加载失败，使用支持多语言（中文、俄文、英文）的系统字体
+            print(f"字体加载失败: {str(e)}，使用支持多语言的字体")
             font = get_unicode_font(request.font_size)
         
         # 转换颜色
